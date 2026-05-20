@@ -162,17 +162,42 @@ func main() {
 		w.Write([]byte("System A OK"))
 	})
 
-	// Startup auto-trigger — massive data demonstration
+	// Startup auto-trigger — 10 batches × 500 items × 50 fail each
 	if autoTrigger == "true" {
 		go func() {
 			time.Sleep(5 * time.Second)
-			log.Printf("[System A] 🚀 Auto-triggering massive demonstration batch (500 items) after startup...")
-			err := triggerBatch(500, 50, "")
-			if err != nil {
-				log.Printf("[System A] ❌ Auto-trigger failed: %v", err)
-			} else {
-				log.Printf("[System A] 🚀 Auto-trigger batch submitted successfully!")
+			const (
+				autoBatches   = 10
+				autoSize      = 500
+				autoFailCount = 50
+			)
+			log.Printf("[System A] 🚀 Auto-triggering %d batches × %d items (%d fail each) = %d total items...",
+				autoBatches, autoSize, autoFailCount, autoBatches*autoSize)
+
+			type result struct {
+				index int
+				err   error
 			}
+			resultCh := make(chan result, autoBatches)
+			for i := 0; i < autoBatches; i++ {
+				go func(idx int) {
+					key := fmt.Sprintf("idem-auto-%d-%04d-batch%d", time.Now().Unix(), rand.Intn(10000), idx)
+					resultCh <- result{index: idx, err: triggerBatch(autoSize, autoFailCount, key)}
+				}(i)
+			}
+
+			succ, fail := 0, 0
+			for i := 0; i < autoBatches; i++ {
+				res := <-resultCh
+				if res.err != nil {
+					log.Printf("[System A] ❌ Auto-trigger batch #%d failed: %v", res.index, res.err)
+					fail++
+				} else {
+					log.Printf("[System A] ✅ Auto-trigger batch #%d submitted", res.index)
+					succ++
+				}
+			}
+			log.Printf("[System A] 🏁 Auto-trigger done: %d/%d batches submitted successfully", succ, autoBatches)
 		}()
 	}
 
@@ -278,17 +303,17 @@ func handleTrigger(w http.ResponseWriter, r *http.Request) {
 		size = s
 	}
 
-	// Default: ~10 % of items fail
-	failCount := size / 10
+	// Default: 50 fail items per batch
+	failCount := 50
 	if f, err := strconv.Atoi(failCountStr); err == nil && f >= 0 {
 		failCount = f
 	}
 
-	// Default: 1 batch; cap at 20 to avoid runaway loads
-	numBatches := 1
+	// Default: 10 batches; cap at 50 to avoid runaway loads
+	numBatches := 10
 	if b, err := strconv.Atoi(batchesStr); err == nil && b > 0 {
-		if b > 20 {
-			b = 20
+		if b > 50 {
+			b = 50
 		}
 		numBatches = b
 	}
