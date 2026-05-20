@@ -1,25 +1,30 @@
+# Build stage — runs from the REPO ROOT context (docker-compose sets context: .)
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
-# Copy files
-COPY main.go ./
+# Cache dependencies first
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o systema main.go
+# Copy the systema source
+COPY simulators/systema/main.go ./simulators/systema/
 
-# Final stage
+# Build
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-w -s" \
+    -o systema \
+    ./simulators/systema/
+
+# Final stage — minimal image
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /root/
 
-# Copy the built binary
 COPY --from=builder /app/systema .
 
-# Expose port
 EXPOSE 8082
 
-# Command to run
 CMD ["./systema"]

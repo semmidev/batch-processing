@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   postgres:
@@ -82,8 +82,8 @@ services:
 
   systema:
     build:
-      context: ./simulators/systema
-      dockerfile: Dockerfile
+      context: . # repo root — go.mod must be accessible
+      dockerfile: simulators/systema/Dockerfile
     container_name: systema
     ports:
       - "8082:8082"
@@ -93,7 +93,23 @@ services:
       - WEBHOOK_URL=http://systema:8082/webhook
       - MIDDLEWARE_API_KEY=key1
       - WEBHOOK_SECRET=some-generated-secret
+      # DB — System A reads/writes systema_items in the shared Postgres instance
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=middleware_db
+      - DB_USER=middleware_user
+      - DB_PASSWORD=YourStrong!Password
+      # Sender loop tuning
+      - SENDER_INTERVAL_SECONDS=5
+      - SENDER_BATCH_SIZE=500
+      - MAX_RETRIES=5
+      # Auto-seeder: 10 batches × 500 items, 50 fail each = 5000 total rows on startup
       - AUTO_TRIGGER=true
+      - AUTO_BATCHES=10
+      - AUTO_SIZE=500
+      - AUTO_FAIL_COUNT=0
     depends_on:
       middleware:
         condition: service_started
+      db-migration:
+        condition: service_completed_successfully
