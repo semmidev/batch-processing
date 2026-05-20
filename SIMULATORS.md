@@ -1,159 +1,190 @@
-# Demonstration & Testing Simulators (System A & System C)
+# Simulator Demonstrasi & Pengujian (System A & System C)
 
-This directory contains simulator programs designed to demonstrate the complete, end-to-end capabilities of the **Batch Processing Middleware**.
+Direktori ini berisi program simulator yang dirancang untuk mendemonstrasikan kemampuan lengkap **Batch Processing Middleware** secara menyeluruh dari ujung ke ujung (*end-to-end*).
 
-## 1. Architectural Overview
+## 1. Gambaran Arsitektur
 
-The demonstration architecture mimics a real-world enterprise setup where:
-- **System A** (Upstream client) submits massive batches of jobs via secure APIs, then listens for an asynchronous, signature-verified webhook indicating batch processing completion.
-- **Middleware** ingests, validates, de-duplicates, tracks, and processes each item concurrently using resilient workers.
-- **System C** (Downstream target) receives the processed items individually via HTTP with rate-limiting and circuit-breaking protection.
+Arsitektur demonstrasi ini meniru lingkungan enterprise nyata di mana:
+- **System A** (Klien Upstream) mengirimkan kumpulan pekerjaan dalam jumlah besar melalui API yang aman, kemudian menunggu webhook asinkron yang telah diverifikasi tanda tangannya sebagai tanda bahwa pemrosesan batch selesai.
+- **Middleware** menerima, memvalidasi, mendeduplikasi, melacak, dan memproses setiap item secara bersamaan menggunakan worker yang tangguh.
+- **System C** (Target Downstream) menerima setiap item yang diproses satu per satu melalui HTTP dengan perlindungan *rate-limiting* dan *circuit-breaking*.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Tester / AutoTrigger
+    actor User as Penguji / AutoTrigger
     participant A as System A (Port 8082)
     participant M as Middleware (Port 8080)
     participant DB as Postgres 18 (Port 5432)
     participant C as System C (Port 8081)
 
-    User->>A: Trigger Batch Request (e.g. size=5, fail_count=1)
+    User->>A: Kirim Permintaan Batch (contoh: size=5, fail_count=1)
     A->>M: POST /api/v1/batches (Auth: Bearer key1, X-Idempotency-Key)
-    M->>DB: Ingest batch & items in a single transaction (Pending)
+    M->>DB: Simpan batch & item dalam satu transaksi (status: Pending)
     M-->>A: HTTP 202 Accepted (Batch ID)
-    A-->>User: Success (Batch Ingested)
+    A-->>User: Berhasil (Batch Diterima)
 
-    Note over M,DB: Workers poll DB using FOR UPDATE SKIP LOCKED
-    loop Concurrently per Item
+    Note over M,DB: Worker melakukan polling DB menggunakan FOR UPDATE SKIP LOCKED
+    loop Diproses Secara Bersamaan per Item
         M->>C: POST /process (Auth: Bearer system-c-key)
-        alt Item Success
+        alt Item Berhasil
             C-->>M: HTTP 200 OK
-            M->>DB: Mark Item as DONE
-        else Injected Failure (ID contains 'fail')
+            M->>DB: Tandai Item sebagai DONE
+        else Kegagalan yang Disuntikkan (ID mengandung 'fail')
             C-->>M: HTTP 500 Server Error
-            M->>DB: Increment retry count (retries up to 3 times)
-            Note over M,DB: If retries exhausted, routes to DLQ
+            M->>DB: Tambah hitungan retry (hingga 3 kali percobaan ulang)
+            Note over M,DB: Jika retry habis, item dikirim ke DLQ
         end
     end
 
-    Note over M,DB: Batch complete -> Outbox Event written in transaction
-    Note over M,DB: Webhook Dispatcher polls Outbox table
+    Note over M,DB: Batch selesai → Event Outbox ditulis dalam transaksi
+    Note over M,DB: Webhook Dispatcher melakukan polling tabel Outbox
     M->>A: POST /webhook (X-Signature: sha256=hmac)
-    A->>A: Verify signature & pretty print summary
+    A->>A: Verifikasi tanda tangan & tampilkan ringkasan
     A-->>M: HTTP 200 OK
-    M->>DB: Mark Outbox Event as PROCESSED
+    M->>DB: Tandai Event Outbox sebagai PROCESSED
 ```
 
 ---
 
-## 2. Quick Start (Zero Setup)
+## 2. Cara Cepat Memulai (Tanpa Setup Manual)
 
-The entire environment—including database creation, automatic migrations, the middleware backend, and both simulators—is fully containerized and automated.
+Seluruh lingkungan — termasuk pembuatan database, migrasi skema otomatis, backend middleware, dan kedua simulator — sudah sepenuhnya dikontainerisasi dan diotomatisasi.
 
-Simply run the following command in the project root:
+Cukup jalankan perintah berikut di direktori root proyek:
 
 ```bash
 docker-compose up --build
 ```
 
-### What happens automatically on startup:
-1. **Postgres** boots up and initializes the database.
-2. **db_migration** runs all pending schema migrations located in the `/migrations` folder.
-3. **middleware** builds, connects to Postgres, starts its background worker pool and webhook dispatcher, and begins listening on port `:8080`.
-4. **systemc** simulator starts up and listens on port `:8081`.
-5. **systema** simulator starts up and listens on port `:8082`.
-6. **Automatic Demonstration**: After 5 seconds, **System A** automatically triggers a test batch of 5 items, containing **1 failure** (`fail-item-...`). You can watch the entire flow unfold in your docker logs!
+### Yang terjadi secara otomatis saat startup:
+1. **Postgres** melakukan booting dan menginisialisasi database.
+2. **db_migration** menjalankan semua migrasi skema yang belum diterapkan dari folder `/migrations`.
+3. **middleware** melakukan build, terhubung ke Postgres, memulai *worker pool* dan *webhook dispatcher* di latar belakang, lalu mulai mendengarkan di port `:8080`.
+4. Simulator **systemc** mulai berjalan dan mendengarkan di port `:8081`.
+5. Simulator **systema** mulai berjalan dan mendengarkan di port `:8082`.
+6. **Demonstrasi Otomatis**: Setelah 5 detik, **System A** secara otomatis mengirimkan batch uji berisi 5 item dengan **1 kegagalan** (`fail-item-...`). Pantau keseluruhan alurnya melalui log Docker!
 
 ---
 
-## 3. Simulator Configurations
+## 3. Konfigurasi Simulator
 
-Both simulators support detailed behavioral tweaking via environment variables defined in `docker-compose.yml`:
+Kedua simulator mendukung penyesuaian perilaku secara detail melalui variabel lingkungan yang didefinisikan di `docker-compose.yml`:
 
-### System C (Downstream Target)
-- `SYSTEM_C_PORT` (default: `8081`): The port to listen on.
-- `SYSTEM_C_API_KEY` (default: `system-c-key`): The Bearer authorization key required by the middleware.
-- `SYSTEM_C_LATENCY_MS` (default: `100`): Artificial delay added to each item process request to simulate real workload latency.
-- `SYSTEM_C_FAILURE_RATE` (default: `0.0`): Float representing the probability (0.0 to 1.0) of returning a random HTTP 500 error.
-- `SYSTEM_C_FAIL_ID_PATTERN` (default: `fail-item`): If an item's `external_id` contains this string, System C will **always** fail with HTTP 500, enabling highly deterministic failure and retry testing.
+### System C (Target Downstream)
+| Variabel | Default | Keterangan |
+|---|---|---|
+| `SYSTEM_C_PORT` | `8081` | Port yang digunakan untuk mendengarkan. |
+| `SYSTEM_C_API_KEY` | `system-c-key` | Kunci Bearer yang dibutuhkan middleware untuk autentikasi. |
+| `SYSTEM_C_LATENCY_MS` | `100` | Penundaan buatan (ms) per item untuk mensimulasikan latensi beban kerja nyata. |
+| `SYSTEM_C_FAILURE_RATE` | `0.0` | Nilai float (0.0–1.0) yang mewakili probabilitas kembalinya error HTTP 500 secara acak. |
+| `SYSTEM_C_FAIL_ID_PATTERN` | `fail-item` | Jika `external_id` suatu item mengandung string ini, System C **selalu** gagal dengan HTTP 500, memungkinkan pengujian kegagalan dan retry yang deterministik. |
 
-### System A (Upstream & Webhook Consumer)
-- `SYSTEM_A_PORT` (default: `8082`): The port to listen on.
-- `MIDDLEWARE_URL` (default: `http://middleware:8080`): The target middleware base URL.
-- `WEBHOOK_URL` (default: `http://systema:8082/webhook`): The callback URL sent to the middleware for completed batches.
-- `MIDDLEWARE_API_KEY` (default: `key1`): The Bearer API Key required to authenticate against the middleware.
-- `WEBHOOK_SECRET` (default: `some-generated-secret`): The shared secret key used to verify the HMAC-SHA256 signature of incoming webhooks.
-- `AUTO_TRIGGER` (default: `true`): Automatically trigger a demo batch on container startup.
+### System A (Upstream & Konsumen Webhook)
+| Variabel | Default | Keterangan |
+|---|---|---|
+| `SYSTEM_A_PORT` | `8082` | Port yang digunakan untuk mendengarkan. |
+| `MIDDLEWARE_URL` | `http://middleware:8080` | URL dasar middleware yang dituju. |
+| `WEBHOOK_URL` | `http://systema:8082/webhook` | URL callback yang dikirimkan ke middleware untuk batch yang telah selesai. |
+| `MIDDLEWARE_API_KEY` | `key1` | Kunci API Bearer untuk autentikasi ke middleware. |
+| `WEBHOOK_SECRET` | `some-generated-secret` | Kunci rahasia bersama untuk memverifikasi tanda tangan HMAC-SHA256 pada webhook masuk. |
+| `AUTO_TRIGGER` | `true` | Otomatis mengirimkan batch demo saat container startup. |
 
 ---
 
-## 4. Manual Testing Scenarios
+## 4. Skenario Pengujian Manual
 
-You can interact with System A's trigger API using `curl` from your host terminal to test specific resilient scenarios.
+Anda dapat berinteraksi dengan API trigger milik System A menggunakan `curl` dari terminal host untuk menguji skenario ketangguhan tertentu.
 
-### Scenario A: Fully Successful Batch
-Submit a batch of 10 items, all of which will succeed:
+### Skenario A: Batch yang Sepenuhnya Berhasil
+Kirimkan batch berisi 10 item, semuanya akan berhasil:
 ```bash
 curl -X POST "http://localhost:8082/trigger?size=10&fail_count=0"
 ```
-* **Observation**:
-  - System A sends the batch to the middleware.
-  - Middleware workers pick up all 10 items, send them to System C, and receive HTTP 200 responses.
-  - Webhook dispatcher delivers the completion webhook to System A.
-  - System A prints a beautiful `🟢 done` summary showing `10 succeeded, 0 failed`.
-
-### Scenario B: Resilient Retries & Partial Success
-Submit a batch of 8 items, where 2 items are configured to fail:
-```bash
-curl -X POST "http://localhost:8082/trigger?size=8&fail_count=2"
-```
-* **Observation**:
-  - System A creates 8 items. The first 2 will have `fail-item` in their IDs.
-  - System C returns HTTP 500 for these 2 items.
-  - Middleware workers log the failures and reschedule them with exponential backoff (up to 3 retries).
-  - The other 6 items succeed immediately.
-  - The failed items are retried. Since they are deterministically configured to always fail, they will eventually exhaust all 3 retries.
-  - **Dead Letter Queue (DLQ)**: Once retries are exhausted, the 2 failed items are moved to the DLQ table.
-  - **Webhook Delivery**: The batch is resolved with a `partial` status. System A receives the webhook showing `6 succeeded, 2 failed` along with detailed failure reasons for the 2 items!
-
-### Scenario C: Idempotency Key Protection
-Submit a request with a custom idempotency key twice:
-```bash
-# 1. First trigger
-curl -X POST "http://localhost:8082/trigger?size=3&idempotency_key=my-custom-key-123"
-
-# 2. Duplicate trigger
-curl -X POST "http://localhost:8082/trigger?size=3&idempotency_key=my-custom-key-123"
-```
-* **Observation**:
-  - The first trigger is accepted and processed.
-  - The second trigger returns the **same Batch ID** immediately from the middleware's idempotency cache, preventing duplicate database ingestion or processing!
-
-### Scenario D: Simulating Transient Failures & Circuit Breaking
-To demonstrate circuit breaking, you can set the random failure rate of System C to high in `docker-compose.yml` (e.g. `SYSTEM_C_FAILURE_RATE=0.6`) and restart:
-```bash
-# Submit a large batch
-curl -X POST "http://localhost:8082/trigger?size=30&fail_count=0"
-```
-* **Observation**:
-  - Due to the high failure rate, consecutive errors will exceed the threshold (50% failure ratio over 10 requests).
-  - The middleware's internal **Circuit Breaker** will trip and transition to the `OPEN` state.
-  - Subsequent items will fail instantly with a `"system C unavailable (circuit breaker open)"` error, protecting both the middleware and System C from load degradation.
-  - Once the open timeout expires, it goes to `HALF-OPEN` and slowly lets traffic through to recover.
+**Yang terjadi:**
+- System A mengirimkan batch ke middleware.
+- Worker middleware memproses semua 10 item, mengirimkannya ke System C, dan menerima respons HTTP 200.
+- Webhook dispatcher mengirimkan webhook penyelesaian ke System A.
+- System A menampilkan ringkasan `🟢 done` yang menunjukkan `10 berhasil, 0 gagal`.
 
 ---
 
-## 5. Checking Data in Postgres
+### Skenario B: Retry Tangguh & Keberhasilan Sebagian
+Kirimkan batch berisi 8 item di mana 2 item dikonfigurasi untuk gagal:
+```bash
+curl -X POST "http://localhost:8082/trigger?size=8&fail_count=2"
+```
+**Yang terjadi:**
+- System A membuat 8 item. 2 item pertama memiliki `fail-item` di dalam ID-nya.
+- System C mengembalikan HTTP 500 untuk 2 item tersebut.
+- Worker middleware mencatat kegagalan dan menjadwalkan ulang dengan *exponential backoff* (hingga 3 kali retry).
+- 6 item lainnya berhasil secara langsung.
+- Item yang gagal dicoba ulang. Karena dikonfigurasi untuk selalu gagal secara deterministik, semua 3 retry akan habis.
+- **Dead Letter Queue (DLQ)**: Setelah retry habis, 2 item gagal dipindahkan ke tabel DLQ.
+- **Pengiriman Webhook**: Batch diselesaikan dengan status `partial`. System A menerima webhook yang menampilkan `6 berhasil, 2 gagal` beserta alasan kegagalan detail untuk setiap item!
 
-If you want to view the database state directly, you can connect to the running PostgreSQL container:
+---
+
+### Skenario C: Perlindungan Kunci Idempoten
+Kirimkan permintaan dengan kunci idempoten kustom sebanyak dua kali:
+```bash
+# 1. Trigger pertama
+curl -X POST "http://localhost:8082/trigger?size=3&idempotency_key=kunci-kustom-saya-123"
+
+# 2. Trigger duplikat
+curl -X POST "http://localhost:8082/trigger?size=3&idempotency_key=kunci-kustom-saya-123"
+```
+**Yang terjadi:**
+- Trigger pertama diterima dan diproses.
+- Trigger kedua mengembalikan **Batch ID yang sama** secara langsung dari cache idempoten middleware, mencegah duplikasi penyimpanan ke database atau pemrosesan ganda!
+
+---
+
+### Skenario D: Mensimulasikan Kegagalan Sementara & Circuit Breaking
+Untuk mendemonstrasikan circuit breaking, atur tingkat kegagalan acak System C menjadi tinggi di `docker-compose.yml` (contoh: `SYSTEM_C_FAILURE_RATE=0.6`) lalu restart:
+```bash
+# Kirimkan batch dalam jumlah besar
+curl -X POST "http://localhost:8082/trigger?size=30&fail_count=0"
+```
+**Yang terjadi:**
+- Akibat tingkat kegagalan yang tinggi, error berturut-turut akan melampaui ambang batas (rasio kegagalan 50% dari 10 permintaan).
+- **Circuit Breaker** internal middleware akan terpicu dan beralih ke status `OPEN`.
+- Item berikutnya akan langsung gagal dengan error `"system C unavailable (circuit breaker open)"`, melindungi middleware dan System C dari penurunan beban.
+- Setelah batas waktu *open* berakhir, status beralih ke `HALF-OPEN` dan secara perlahan meneruskan lalu lintas untuk pemulihan.
+
+---
+
+## 5. Melihat Data di Postgres
+
+Jika ingin melihat status database secara langsung, hubungkan ke container PostgreSQL yang sedang berjalan:
 
 ```bash
 docker exec -it postgres_db psql -U middleware_user -d middleware_db
 ```
 
-### Useful SQL Queries:
-- View all batches: `SELECT id, status, total_items, processed_items, failed_items FROM batches;`
-- View all dead letter items: `SELECT * FROM dead_letter_queue;`
-- View idempotency cache: `SELECT * FROM idempotency_keys;`
-- View outbox queue status: `SELECT id, event_type, status, retry_count FROM outbox_events;`
+### Query SQL yang Berguna:
+```sql
+-- Lihat semua batch beserta statusnya
+SELECT id, status, total_items, processed_items, failed_items FROM batches;
+
+-- Lihat semua item yang masuk Dead Letter Queue
+SELECT * FROM dead_letter_queue;
+
+-- Lihat cache kunci idempoten
+SELECT * FROM idempotency_keys;
+
+-- Lihat status antrian outbox (pengiriman webhook)
+SELECT id, event_type, status, retry_count FROM outbox_events;
+```
+
+---
+
+## 6. Port Layanan
+
+| Layanan | Port Host | Keterangan |
+|---|---|---|
+| Middleware | `8080` | API utama untuk mengirimkan batch |
+| System C | `8081` | Simulator target downstream |
+| System A | `8082` | Simulator klien upstream & endpoint `/webhook` |
+| PostgreSQL | `5432` | Database utama |
+| Prometheus | `9090` | Endpoint metrik observabilitas |

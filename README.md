@@ -1,118 +1,124 @@
 # Batch Processing Middleware
 
-An enterprise-grade, highly resilient batch-processing middleware written in Go. This service acts as an intermediary layer, accepting large batches of jobs from multiple source systems, securely processing them concurrently against external systems, and delivering completion statuses via secure webhooks.
+Middleware pemrosesan batch berkelas enterprise yang sangat tangguh, ditulis dalam Go. Layanan ini berfungsi sebagai lapisan perantara yang menerima kumpulan pekerjaan dalam jumlah besar dari berbagai sistem sumber, memprosesnya secara bersamaan (concurrent) terhadap sistem eksternal secara aman, serta mengirimkan status penyelesaian melalui webhook yang terenkripsi.
 
-## Key Features
+## Fitur Utama
 
-- **Robust Concurrency**: Leverages PostgreSQL 18's `FOR UPDATE SKIP LOCKED` for rock-solid, lock-free row-level concurrency across multiple horizontally-scaled worker nodes.
-- **Idempotent API**: All batch creation endpoints require an Idempotency-Key header to safely handle network retries and prevent duplicate batch processing.
-- **Resilient Webhooks (Outbox Pattern)**: Webhooks are dispatched using the transactional Outbox Pattern. If the destination is unreachable, exponential backoff is applied.
-- **Dead Letter Queue (DLQ)**: Failed items that exhaust their maximum retry attempts are safely routed to a Dead Letter Queue for manual inspection and replay.
-- **Stale Lock Recovery**: Automatically detects and recovers items that were left in a "processing" state by a crashed or unresponsive worker node.
-- **Modern Identifiers**: Utilizes PostgreSQL 18's native `uuidv7()` for all primary keys, ensuring time-ordered locality and massive scalability.
-- **Observability**: Built-in Prometheus metrics and structured JSON logging using `go.uber.org/zap`.
-- **Secure Webhooks**: Webhook payloads are signed using HMAC SHA-256, allowing consumers to verify the authenticity of the webhook payload.
+- **Konkurensi Kuat**: Memanfaatkan fitur `FOR UPDATE SKIP LOCKED` milik PostgreSQL 18 untuk konkurensi antar baris yang solid dan bebas deadlock di seluruh worker node yang di-*scale* secara horizontal.
+- **API Idempoten**: Semua endpoint pembuatan batch mewajibkan header `Idempotency-Key` untuk menangani percobaan ulang jaringan secara aman dan mencegah pemrosesan batch duplikat.
+- **Webhook Tangguh (Outbox Pattern)**: Webhook dikirimkan menggunakan pola *Transactional Outbox*. Jika tujuan tidak dapat dijangkau, *exponential backoff* akan diterapkan secara otomatis.
+- **Dead Letter Queue (DLQ)**: Item yang gagal dan telah menghabiskan jumlah maksimum percobaan ulang akan disimpan dengan aman ke dalam Dead Letter Queue untuk inspeksi manual dan pemutaran ulang.
+- **Pemulihan Kunci Basi (Stale Lock Recovery)**: Secara otomatis mendeteksi dan memulihkan item yang tertinggal dalam status "processing" akibat worker node yang crash atau tidak merespons.
+- **Identifier Modern**: Menggunakan `uuidv7()` bawaan PostgreSQL 18 untuk semua primary key, memastikan lokalitas yang terurut berdasarkan waktu dan skalabilitas tinggi.
+- **Observabilitas**: Metrik Prometheus bawaan dan logging JSON terstruktur menggunakan `go.uber.org/zap`.
+- **Webhook Aman**: Payload webhook ditandatangani menggunakan HMAC SHA-256, memungkinkan konsumen memverifikasi keaslian payload webhook yang diterima.
 
-## Technology Stack
+## Teknologi yang Digunakan
 
-- **Language**: Go 1.21+
+- **Bahasa**: Go 1.21+
 - **Database**: PostgreSQL 18
 - **Router**: `go-chi/chi`
-- **Database Driver/Mapper**: `github.com/lib/pq` & `github.com/jmoiron/sqlx`
-- **Migrations**: `golang-migrate/migrate`
+- **Driver/Mapper Database**: `github.com/lib/pq` & `github.com/jmoiron/sqlx`
+- **Migrasi**: `golang-migrate/migrate`
 - **Logging**: `go.uber.org/zap`
 
-## Project Structure
+## Struktur Proyek
 
 ```
 .
 ├── cmd/
-│   └── api/                # Main application entrypoint
+│   └── server/             # Titik masuk utama aplikasi
 ├── internal/
-│   ├── config/             # Application configuration loader (viper/env)
-│   ├── database/           # PostgreSQL connection initialization
-│   ├── domain/             # Core domain models and enums
-│   ├── http/               # Chi Router, Handlers, and Middlewares
-│   ├── observability/      # Zap Logger & Prometheus Metrics
-│   ├── repository/         # Data Access Layer (sqlx implementations)
-│   └── service/            # Core Business Logic (WorkerPool, WebhookDispatcher)
-├── migrations/             # PostgreSQL up/down migration files (.sql)
-├── docker-compose.yml      # Local development infrastructure
-├── Makefile                # Build, run, and migration commands
-└── .env.example            # Example environment variables
+│   ├── config/             # Loader konfigurasi aplikasi (viper/env)
+│   ├── database/           # Inisialisasi koneksi PostgreSQL
+│   ├── domain/             # Model domain inti dan enumerasi
+│   ├── adapter/
+│   │   ├── driven/         # Adapter keluar (repositori, klien System C)
+│   │   └── driving/        # Adapter masuk (HTTP handler, worker pool)
+│   ├── application/        # Implementasi use case bisnis
+│   ├── observability/      # Logger Zap & Metrik Prometheus
+│   ├── port/
+│   │   ├── input/          # Interface use case (port masuk)
+│   │   └── output/         # Interface repositori/klien (port keluar)
+│   └── uuid/               # Package pembuat UUID v7
+├── migrations/             # File migrasi up/down PostgreSQL (.sql)
+├── simulators/             # Program simulator System A dan System C
+├── docker-compose.yml      # Infrastruktur pengembangan lokal
+├── Makefile                # Perintah build, run, dan migrasi
+└── .env.example            # Contoh variabel lingkungan
 ```
 
-## Getting Started
+## Memulai
 
-### Prerequisites
+### Prasyarat
 - Go 1.21+
 - Docker & Docker Compose
-- `golang-migrate` CLI installed locally
+- CLI `golang-migrate` (opsional, jika menjalankan migrasi secara manual)
 
-### 1. Environment Setup
+### 1. Pengaturan Lingkungan
 
-Copy the example environment file:
+Salin file lingkungan contoh:
 ```bash
 cp .env.example .env
 ```
 
-### 2. Start Infrastructure
+### 2. Jalankan Semua Layanan (Cara Termudah)
 
-Launch the PostgreSQL 18 database using Docker Compose:
+Cukup jalankan perintah berikut di direktori root proyek. Perintah ini akan otomatis menjalankan database, migrasi skema, middleware, dan kedua simulator:
 ```bash
-docker-compose up -d postgres
+docker-compose up --build
 ```
 
-### 3. Run Migrations
+### 3. Jalankan Migrasi (Opsional, jika tanpa Docker)
 
-Ensure your database schema is fully up-to-date:
+Pastikan skema database sudah terkini:
 ```bash
 make migrate-up
 ```
 
-### 4. Run the Application
+### 4. Jalankan Aplikasi (Opsional, jika tanpa Docker)
 
-Start the API and Background Workers:
+Mulai API dan Background Worker:
 ```bash
 make run
 ```
-By default, the API will be available at `http://localhost:8080`.
+Secara default, API akan tersedia di `http://localhost:8080`.
 
-## API Documentation
+## Dokumentasi API
 
-### Create a Batch
-`POST /v1/batches`
+### Buat Batch Baru
+`POST /api/v1/batches`
 
-Headers:
-- `Idempotency-Key` (Required): Unique key to prevent duplicate processing.
+Header:
+- `Authorization: Bearer <api-key>` (Wajib): Kunci API untuk autentikasi.
+- `X-Idempotency-Key` (Wajib): Kunci unik untuk mencegah pemrosesan duplikat.
 
 Body:
 ```json
 {
   "correlation_id": "req-12345",
-  "source_system": "billing_service",
   "webhook_url": "https://api.example.com/webhooks/batches",
-  "webhook_secret": "super_secret_signing_key",
   "items": [
     {
       "external_id": "invoice_778",
-      "payload": "{\"amount\": 100.00, \"currency\": \"USD\"}"
+      "payload": {"amount": 100.00, "currency": "USD"}
     }
   ]
 }
 ```
 
-### Cancel a Batch
-`POST /v1/batches/{batch_id}/cancel`
-Cancels a batch. Any items that are currently `pending` will be marked as `cancelled`.
+### Batalkan Batch
+`POST /api/v1/batches/{batch_id}/cancel`
 
-### Batch Status Webhook Payload
-When a batch finishes processing (either success, partial success, or failure), a POST request is sent to the configured `webhook_url` with a `X-Signature` header (HMAC SHA-256) for verification.
+Membatalkan sebuah batch. Semua item yang saat ini berstatus `pending` akan ditandai sebagai `cancelled`.
+
+### Payload Webhook Status Batch
+Ketika sebuah batch selesai diproses (berhasil, berhasil sebagian, atau gagal), permintaan POST akan dikirimkan ke `webhook_url` yang dikonfigurasi dengan header `X-Signature` (HMAC SHA-256) untuk verifikasi.
 
 ```json
 {
   "event": "batch_completed",
-  "batch_id": "018f6c58-...-uuidv7",
+  "batch_id": "019e447b-...-uuidv7",
   "correlation_id": "req-12345",
   "status": "done",
   "summary": {
@@ -125,5 +131,10 @@ When a batch finishes processing (either success, partial success, or failure), 
 }
 ```
 
-## License
+Kemungkinan nilai `status`:
+- `done` — Semua item berhasil diproses.
+- `partial` — Sebagian item berhasil, sebagian gagal dan masuk DLQ.
+- `failed` — Semua item gagal.
+
+## Lisensi
 MIT License

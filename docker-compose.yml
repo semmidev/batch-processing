@@ -58,8 +58,8 @@ services:
 
   systemc:
     build:
-      context: .
-      dockerfile: simulators/systemc/Dockerfile
+      context: ./simulators/systemc
+      dockerfile: Dockerfile
     container_name: systemc
     ports:
       - "8081:8081"
@@ -73,8 +73,8 @@ services:
 
   systema:
     build:
-      context: .
-      dockerfile: simulators/systema/Dockerfile
+      context: ./simulators/systema
+      dockerfile: Dockerfile
     container_name: systema
     ports:
       - "8082:8082"

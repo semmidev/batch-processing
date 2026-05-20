@@ -84,7 +84,7 @@ func (r *batchRepo) GetPendingItems(ctx context.Context, workerID string, limit 
 			updated_at = NOW()
 		WHERE id IN (
 			SELECT id FROM batch_items 
-			WHERE status IN ('pending', 'failed')
+			WHERE status = 'pending'
 			  AND (next_retry_at IS NULL OR next_retry_at <= NOW())
 			ORDER BY id
 			FOR UPDATE SKIP LOCKED
@@ -115,8 +115,20 @@ func (r *batchRepo) UpdateItemStatus(ctx context.Context, itemID uuid.UUID, stat
 }
 
 func (r *batchRepo) GetBatchItemsStatus(ctx context.Context, batchID uuid.UUID) (total, success, failed int, failedItems []domain.BatchItem, err error) {
-	var batch domain.Batch
-	err = r.db.GetContext(ctx, &batch, `SELECT total_items, processed_items, failed_items FROM batches WHERE id = $1`, batchID)
+	var totalItems int
+	err = r.db.GetContext(ctx, &totalItems, `SELECT total_items FROM batches WHERE id = $1`, batchID)
+	if err != nil {
+		return 0, 0, 0, nil, err
+	}
+
+	var successItems int
+	err = r.db.GetContext(ctx, &successItems, `SELECT COUNT(*) FROM batch_items WHERE batch_id = $1 AND status = 'done'`, batchID)
+	if err != nil {
+		return 0, 0, 0, nil, err
+	}
+
+	var failedItemsCount int
+	err = r.db.GetContext(ctx, &failedItemsCount, `SELECT COUNT(*) FROM batch_items WHERE batch_id = $1 AND status = 'failed'`, batchID)
 	if err != nil {
 		return 0, 0, 0, nil, err
 	}
@@ -126,14 +138,23 @@ func (r *batchRepo) GetBatchItemsStatus(ctx context.Context, batchID uuid.UUID) 
 		return 0, 0, 0, nil, err
 	}
 
-	return batch.TotalItems, batch.ProcessedItems, batch.FailedItems, failedItems, nil
+	return totalItems, successItems, failedItemsCount, failedItems, nil
 }
 
 func (r *batchRepo) CompleteBatch(ctx context.Context, batchID uuid.UUID, status domain.BatchStatus, completedAt time.Time) error {
-	query := `UPDATE batches SET status = $1, completed_at = $2, updated_at = NOW() WHERE id = $3`
+	query := `
+		UPDATE batches 
+		SET status = $1, 
+		    completed_at = $2, 
+		    updated_at = NOW(),
+		    processed_items = (SELECT COUNT(*) FROM batch_items WHERE batch_id = $3 AND status = 'done'),
+		    failed_items = (SELECT COUNT(*) FROM batch_items WHERE batch_id = $3 AND status = 'failed')
+		WHERE id = $3
+	`
 	_, err := r.db.ExecContext(ctx, query, status, completedAt, batchID)
 	return err
 }
+
 
 func (r *batchRepo) ResetStaleLocks(ctx context.Context, staleThreshold time.Duration) error {
 	query := `

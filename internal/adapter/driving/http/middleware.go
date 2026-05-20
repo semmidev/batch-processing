@@ -13,10 +13,12 @@ import (
 
 func APIKeyAuth(cfg *config.Config) func(http.Handler) http.Handler {
 	validKeys := make(map[string]struct{})
-	for _, k := range cfg.Security.ValidAPIKeys {
-		k = strings.TrimSpace(k)
-		if k != "" {
-			validKeys[k] = struct{}{}
+	for _, rawKey := range cfg.Security.ValidAPIKeys {
+		for _, k := range strings.Split(rawKey, ",") {
+			k = strings.TrimSpace(k)
+			if k != "" {
+				validKeys[k] = struct{}{}
+			}
 		}
 	}
 
