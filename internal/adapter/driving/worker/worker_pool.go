@@ -1,4 +1,4 @@
-package service
+package worker
 
 import (
 	"context"
@@ -7,27 +7,27 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/semmidev/batch-processing/internal/config"
 	"github.com/semmidev/batch-processing/internal/domain"
 	"github.com/semmidev/batch-processing/internal/observability"
-	"github.com/semmidev/batch-processing/internal/repository"
+	"github.com/semmidev/batch-processing/internal/port/output"
+	"github.com/semmidev/batch-processing/internal/uuid"
 	"go.uber.org/zap"
 )
 
 type WorkerPool struct {
 	cfg        *config.Config
-	batchRepo  repository.BatchRepository
-	outboxRepo repository.OutboxRepository
-	dlqRepo    repository.DeadLetterRepository
-	systemC    SystemCClient
+	batchRepo  output.BatchRepository
+	outboxRepo output.OutboxRepository
+	dlqRepo    output.DeadLetterRepository
+	systemC    output.SystemCClient
 	workerID   string
 	wg         sync.WaitGroup
 	ctx        context.Context
 	cancel     context.CancelFunc
 }
 
-func NewWorkerPool(cfg *config.Config, batchRepo repository.BatchRepository, outboxRepo repository.OutboxRepository, dlqRepo repository.DeadLetterRepository, systemC SystemCClient) *WorkerPool {
+func NewWorkerPool(cfg *config.Config, batchRepo output.BatchRepository, outboxRepo output.OutboxRepository, dlqRepo output.DeadLetterRepository, systemC output.SystemCClient) *WorkerPool {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerPool{
 		cfg:        cfg,

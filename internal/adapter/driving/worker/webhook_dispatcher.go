@@ -1,4 +1,4 @@
-package service
+package worker
 
 import (
 	"bytes"
@@ -16,21 +16,21 @@ import (
 	"github.com/semmidev/batch-processing/internal/config"
 	"github.com/semmidev/batch-processing/internal/domain"
 	"github.com/semmidev/batch-processing/internal/observability"
-	"github.com/semmidev/batch-processing/internal/repository"
+	"github.com/semmidev/batch-processing/internal/port/output"
 	"go.uber.org/zap"
 )
 
 type WebhookDispatcher struct {
 	cfg        *config.Config
-	outboxRepo repository.OutboxRepository
-	batchRepo  repository.BatchRepository
+	outboxRepo output.OutboxRepository
+	batchRepo  output.BatchRepository
 	client     *http.Client
 	ctx        context.Context
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
 }
 
-func NewWebhookDispatcher(cfg *config.Config, outboxRepo repository.OutboxRepository, batchRepo repository.BatchRepository) *WebhookDispatcher {
+func NewWebhookDispatcher(cfg *config.Config, outboxRepo output.OutboxRepository, batchRepo output.BatchRepository) *WebhookDispatcher {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WebhookDispatcher{
 		cfg:        cfg,

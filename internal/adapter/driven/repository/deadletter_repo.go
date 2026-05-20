@@ -5,17 +5,15 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/semmidev/batch-processing/internal/domain"
+	"github.com/semmidev/batch-processing/internal/port/output"
 )
-
-type DeadLetterRepository interface {
-	Insert(ctx context.Context, item *domain.DeadLetterQueue) error
-}
 
 type deadLetterRepo struct {
 	db *sqlx.DB
 }
 
-func NewDeadLetterRepository(db *sqlx.DB) DeadLetterRepository {
+// NewDeadLetterRepository creates a new deadLetterRepo implementing output.DeadLetterRepository.
+func NewDeadLetterRepository(db *sqlx.DB) output.DeadLetterRepository {
 	return &deadLetterRepo{db: db}
 }
 

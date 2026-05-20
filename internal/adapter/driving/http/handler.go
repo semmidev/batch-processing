@@ -9,18 +9,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/semmidev/batch-processing/internal/domain"
 	"github.com/semmidev/batch-processing/internal/observability"
-	"github.com/semmidev/batch-processing/internal/service"
+	"github.com/semmidev/batch-processing/internal/port/input"
 	"go.uber.org/zap"
 )
 
 type Handler struct {
-	batchService service.BatchService
+	batchUseCase input.BatchUseCase
 	validator    *validator.Validate
 }
 
-func NewHandler(batchService service.BatchService) *Handler {
+func NewHandler(batchUseCase input.BatchUseCase) *Handler {
 	return &Handler{
-		batchService: batchService,
+		batchUseCase: batchUseCase,
 		validator:    validator.New(),
 	}
 }
@@ -42,9 +42,9 @@ func (h *Handler) SubmitBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idempotencyKey := r.Header.Get("Idempotency-Key")
+	idempotencyKey := r.Header.Get("X-Idempotency-Key")
 
-	batchID, err := h.batchService.SubmitBatch(r.Context(), idempotencyKey, req)
+	batchID, err := h.batchUseCase.SubmitBatch(r.Context(), idempotencyKey, req)
 	if err != nil {
 		observability.Log.Error("failed to submit batch", zap.Error(err))
 		h.respondError(w, http.StatusInternalServerError, "failed to submit batch")
@@ -67,7 +67,7 @@ func (h *Handler) GetBatchStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, err := h.batchService.GetBatchStatus(r.Context(), batchID)
+	status, err := h.batchUseCase.GetBatchStatus(r.Context(), batchID)
 	if err != nil {
 		observability.Log.Error("failed to get batch status", zap.Error(err))
 		h.respondError(w, http.StatusInternalServerError, "failed to get batch status")
@@ -90,7 +90,7 @@ func (h *Handler) CancelBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.batchService.CancelBatch(r.Context(), batchID)
+	err = h.batchUseCase.CancelBatch(r.Context(), batchID)
 	if err != nil {
 		observability.Log.Error("failed to cancel batch", zap.Error(err))
 		if err.Error() == "batch not found" {

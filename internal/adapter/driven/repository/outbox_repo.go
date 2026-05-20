@@ -7,20 +7,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/semmidev/batch-processing/internal/domain"
+	"github.com/semmidev/batch-processing/internal/port/output"
 )
-
-type OutboxRepository interface {
-	CreateEvent(ctx context.Context, event *domain.OutboxEvent) error
-	GetPendingEvents(ctx context.Context, limit int) ([]domain.OutboxEvent, error)
-	MarkEventAsProcessed(ctx context.Context, id uuid.UUID) error
-	MarkEventAsFailed(ctx context.Context, id uuid.UUID, retryCount int, nextRetryAt time.Time) error
-}
 
 type outboxRepo struct {
 	db *sqlx.DB
 }
 
-func NewOutboxRepository(db *sqlx.DB) OutboxRepository {
+// NewOutboxRepository creates a new outboxRepo implementing output.OutboxRepository.
+func NewOutboxRepository(db *sqlx.DB) output.OutboxRepository {
 	return &outboxRepo{db: db}
 }
 

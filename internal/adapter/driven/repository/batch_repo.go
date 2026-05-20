@@ -8,29 +8,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/semmidev/batch-processing/internal/domain"
+	"github.com/semmidev/batch-processing/internal/port/output"
 )
-
-type BatchRepository interface {
-	CreateBatch(ctx context.Context, batch *domain.Batch) error
-	UpdateBatchStatus(ctx context.Context, batchID uuid.UUID, status domain.BatchStatus) error
-	IncrementProcessedItems(ctx context.Context, batchID uuid.UUID) error
-	IncrementFailedItems(ctx context.Context, batchID uuid.UUID) error
-	GetBatch(ctx context.Context, batchID uuid.UUID) (*domain.Batch, error)
-	GetBatchByCorrelationID(ctx context.Context, correlationID string) (*domain.Batch, error)
-	BulkInsertItems(ctx context.Context, items []domain.BatchItem) error
-	GetPendingItems(ctx context.Context, workerID string, limit int) ([]domain.BatchItem, error)
-	UpdateItemStatus(ctx context.Context, itemID uuid.UUID, status domain.ItemStatus, resultPayload, errorMsg sql.NullString, retryCount int, nextRetryAt sql.NullTime) error
-	GetBatchItemsStatus(ctx context.Context, batchID uuid.UUID) (total, success, failed int, failedItems []domain.BatchItem, err error)
-	CompleteBatch(ctx context.Context, batchID uuid.UUID, status domain.BatchStatus, completedAt time.Time) error
-	ResetStaleLocks(ctx context.Context, staleThreshold time.Duration) error
-	CancelBatch(ctx context.Context, batchID uuid.UUID) error
-}
 
 type batchRepo struct {
 	db *sqlx.DB
 }
 
-func NewBatchRepository(db *sqlx.DB) BatchRepository {
+// NewBatchRepository creates a new batchRepo instance implementing output.BatchRepository.
+func NewBatchRepository(db *sqlx.DB) output.BatchRepository {
 	return &batchRepo{db: db}
 }
 

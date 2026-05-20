@@ -1,4 +1,4 @@
-package service
+package systemc
 
 import (
 	"bytes"
@@ -12,14 +12,11 @@ import (
 
 	"github.com/semmidev/batch-processing/internal/config"
 	"github.com/semmidev/batch-processing/internal/observability"
+	"github.com/semmidev/batch-processing/internal/port/output"
 	"github.com/sony/gobreaker/v2"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 )
-
-type SystemCClient interface {
-	SendItem(ctx context.Context, externalID string, payload string) ([]byte, error)
-}
 
 type systemCClient struct {
 	client      *http.Client
@@ -29,7 +26,8 @@ type systemCClient struct {
 	rateLimiter *rate.Limiter
 }
 
-func NewSystemCClient(cfg *config.Config) SystemCClient {
+// NewSystemCClient creates a new systemCClient implementing output.SystemCClient.
+func NewSystemCClient(cfg *config.Config) output.SystemCClient {
 	httpClient := &http.Client{
 		Timeout: time.Duration(cfg.SystemC.TimeoutSeconds) * time.Second,
 	}

@@ -1,4 +1,4 @@
-package service
+package application
 
 import (
 	"context"
@@ -6,25 +6,21 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/semmidev/batch-processing/internal/domain"
 	"github.com/semmidev/batch-processing/internal/observability"
-	"github.com/semmidev/batch-processing/internal/repository"
+	"github.com/semmidev/batch-processing/internal/port/input"
+	"github.com/semmidev/batch-processing/internal/port/output"
+	"github.com/semmidev/batch-processing/internal/uuid"
 	"go.uber.org/zap"
 )
 
-type BatchService interface {
-	SubmitBatch(ctx context.Context, idempotencyKey string, req domain.SubmitBatchRequest) (uuid.UUID, error)
-	GetBatchStatus(ctx context.Context, batchID uuid.UUID) (*domain.BatchStatusResponse, error)
-	CancelBatch(ctx context.Context, batchID uuid.UUID) error
-}
-
 type batchService struct {
-	batchRepo       repository.BatchRepository
-	idempotencyRepo repository.IdempotencyRepository
+	batchRepo       output.BatchRepository
+	idempotencyRepo output.IdempotencyRepository
 }
 
-func NewBatchService(batchRepo repository.BatchRepository, idempotencyRepo repository.IdempotencyRepository) BatchService {
+// NewBatchService creates a new batchService implementing input.BatchUseCase.
+func NewBatchService(batchRepo output.BatchRepository, idempotencyRepo output.IdempotencyRepository) input.BatchUseCase {
 	return &batchService{
 		batchRepo:       batchRepo,
 		idempotencyRepo: idempotencyRepo,

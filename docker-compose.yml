@@ -17,17 +17,74 @@ services:
       retries: 5
       start_period: 10s
 
+  db-migration:
+    image: migrate/migrate:v4.17.0
+    container_name: db_migration
+    volumes:
+      - ./migrations:/migrations
+    command: -path=/migrations -database "postgres://middleware_user:YourStrong!Password@postgres:5432/middleware_db?sslmode=disable" up
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   middleware:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: middleware
     ports:
       - "8080:8080"
+      - "9090:9090"
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=middleware_db
       - DB_USER=middleware_user
       - DB_PASSWORD=YourStrong!Password
+      - SYSTEM_C_BASE_URL=http://systemc:8081
+      - SYSTEM_C_API_KEY=system-c-key
+      - SYSTEM_C_TIMEOUT_SECONDS=15
+      - SYSTEM_C_RATE_LIMIT_PER_SECOND=100
+      - API_KEY_HEADER=Authorization
+      - VALID_API_KEYS=key1,key2
+      - WEBHOOK_MAX_RETRIES=5
+      - WEBHOOK_SIGNING_ALGORITHM=sha256
+      - LOG_LEVEL=info
     depends_on:
       postgres:
         condition: service_healthy
+      db-migration:
+        condition: service_completed_successfully
+
+  systemc:
+    build:
+      context: .
+      dockerfile: simulators/systemc/Dockerfile
+    container_name: systemc
+    ports:
+      - "8081:8081"
+    environment:
+      - SYSTEM_C_PORT=8081
+      - SYSTEM_C_API_KEY=system-c-key
+      - SYSTEM_C_LATENCY_MS=100
+      - SYSTEM_C_FAILURE_RATE=0.0
+      - SYSTEM_C_FAIL_ID_PATTERN=fail-item
+    restart: always
+
+  systema:
+    build:
+      context: .
+      dockerfile: simulators/systema/Dockerfile
+    container_name: systema
+    ports:
+      - "8082:8082"
+    environment:
+      - SYSTEM_A_PORT=8082
+      - MIDDLEWARE_URL=http://middleware:8080
+      - WEBHOOK_URL=http://systema:8082/webhook
+      - MIDDLEWARE_API_KEY=key1
+      - WEBHOOK_SECRET=some-generated-secret
+      - AUTO_TRIGGER=true
+    depends_on:
+      middleware:
+        condition: service_started

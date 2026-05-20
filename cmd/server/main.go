@@ -11,11 +11,19 @@ import (
 
 	"github.com/semmidev/batch-processing/internal/config"
 	"github.com/semmidev/batch-processing/internal/database"
-	internalhttp "github.com/semmidev/batch-processing/internal/http"
 	"github.com/semmidev/batch-processing/internal/observability"
-	"github.com/semmidev/batch-processing/internal/repository"
-	"github.com/semmidev/batch-processing/internal/service"
 	"go.uber.org/zap"
+
+	// Driven Adapters (Output)
+	"github.com/semmidev/batch-processing/internal/adapter/driven/repository"
+	"github.com/semmidev/batch-processing/internal/adapter/driven/systemc"
+
+	// Driving Adapters (Input)
+	internalhttp "github.com/semmidev/batch-processing/internal/adapter/driving/http"
+	"github.com/semmidev/batch-processing/internal/adapter/driving/worker"
+
+	// Application Layer (Use Cases)
+	"github.com/semmidev/batch-processing/internal/application"
 )
 
 func main() {
@@ -40,25 +48,26 @@ func main() {
 	}
 	defer db.Close()
 
-	// Init Repositories
+	// Init Repositories (Driven Adapters)
 	batchRepo := repository.NewBatchRepository(db)
 	outboxRepo := repository.NewOutboxRepository(db)
 	idempotencyRepo := repository.NewIdempotencyRepository(db)
 	dlqRepo := repository.NewDeadLetterRepository(db)
 
-	// Init Services
-	systemCClient := service.NewSystemCClient(cfg)
-	batchService := service.NewBatchService(batchRepo, idempotencyRepo)
+	// Init Clients & Services (Driven Client & Application Service)
+	systemCClient := systemc.NewSystemCClient(cfg)
+	batchService := application.NewBatchService(batchRepo, idempotencyRepo)
 
-	workerPool := service.NewWorkerPool(cfg, batchRepo, outboxRepo, dlqRepo, systemCClient)
+	// Init Background Workers (Driving Adapters)
+	workerPool := worker.NewWorkerPool(cfg, batchRepo, outboxRepo, dlqRepo, systemCClient)
 	workerPool.Start()
 	defer workerPool.Stop()
 
-	webhookDispatcher := service.NewWebhookDispatcher(cfg, outboxRepo, batchRepo)
+	webhookDispatcher := worker.NewWebhookDispatcher(cfg, outboxRepo, batchRepo)
 	webhookDispatcher.Start()
 	defer webhookDispatcher.Stop()
 
-	// Init HTTP
+	// Init HTTP (Driving Adapter)
 	handler := internalhttp.NewHandler(batchService)
 	router := internalhttp.NewRouter(cfg, handler)
 

@@ -6,19 +6,15 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/semmidev/batch-processing/internal/domain"
+	"github.com/semmidev/batch-processing/internal/port/output"
 )
-
-type IdempotencyRepository interface {
-	Get(ctx context.Context, key string) (*domain.IdempotencyKey, error)
-	Create(ctx context.Context, idempotencyKey *domain.IdempotencyKey) error
-	UpdateResponse(ctx context.Context, key string, responseCache string) error
-}
 
 type idempotencyRepo struct {
 	db *sqlx.DB
 }
 
-func NewIdempotencyRepository(db *sqlx.DB) IdempotencyRepository {
+// NewIdempotencyRepository creates a new idempotencyRepo implementing output.IdempotencyRepository.
+func NewIdempotencyRepository(db *sqlx.DB) output.IdempotencyRepository {
 	return &idempotencyRepo{db: db}
 }
 
