@@ -57,8 +57,10 @@ type SecurityConfig struct {
 }
 
 type CircuitBreakerConfig struct {
-	MaxRequestsHalfOpen int
-	OpenTimeoutSeconds  int
+	MaxRequestsHalfOpen   int
+	OpenTimeoutSeconds    int
+	MinRequestsToTrip     int
+	FailureRatioThreshold float64
 }
 
 func Load() (*Config, error) {
@@ -75,8 +77,10 @@ func Load() (*Config, error) {
 	viper.SetDefault("DB_MAX_IDLE_CONNS", 5)
 	viper.SetDefault("SYSTEM_C_TIMEOUT_SECONDS", 15)
 	viper.SetDefault("SYSTEM_C_RATE_LIMIT_PER_SECOND", 100)
-	viper.SetDefault("CB_MAX_REQUESTS_HALF_OPEN", 5)
-	viper.SetDefault("CB_OPEN_TIMEOUT_SECONDS", 60)
+	viper.SetDefault("CB_MAX_REQUESTS_HALF_OPEN", 20)
+	viper.SetDefault("CB_OPEN_TIMEOUT_SECONDS", 15)
+	viper.SetDefault("CB_MIN_REQUESTS_TO_TRIP", 50)
+	viper.SetDefault("CB_FAILURE_RATIO_THRESHOLD", 0.6)
 	viper.SetDefault("WEBHOOK_MAX_RETRIES", 5)
 	viper.SetDefault("WEBHOOK_SIGNING_ALGORITHM", "sha256")
 	viper.SetDefault("TIMESTAMP_TOLERANCE_SECONDS", 300)
@@ -121,8 +125,10 @@ func Load() (*Config, error) {
 			TimestampToleranceSecs: viper.GetInt("TIMESTAMP_TOLERANCE_SECONDS"),
 		},
 		CB: CircuitBreakerConfig{
-			MaxRequestsHalfOpen: viper.GetInt("CB_MAX_REQUESTS_HALF_OPEN"),
-			OpenTimeoutSeconds:  viper.GetInt("CB_OPEN_TIMEOUT_SECONDS"),
+			MaxRequestsHalfOpen:   viper.GetInt("CB_MAX_REQUESTS_HALF_OPEN"),
+			OpenTimeoutSeconds:    viper.GetInt("CB_OPEN_TIMEOUT_SECONDS"),
+			MinRequestsToTrip:     viper.GetInt("CB_MIN_REQUESTS_TO_TRIP"),
+			FailureRatioThreshold: viper.GetFloat64("CB_FAILURE_RATIO_THRESHOLD"),
 		},
 		LogLevel: viper.GetString("LOG_LEVEL"),
 	}

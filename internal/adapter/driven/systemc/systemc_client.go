@@ -35,11 +35,15 @@ func NewSystemCClient(cfg *config.Config) output.SystemCClient {
 	st := gobreaker.Settings{
 		Name:        "SystemC",
 		MaxRequests: uint32(cfg.CB.MaxRequestsHalfOpen),
-		Interval:    time.Duration(cfg.CB.OpenTimeoutSeconds) * time.Second,
+		Interval:    10 * time.Second, // rolling window for counting failures
 		Timeout:     time.Duration(cfg.CB.OpenTimeoutSeconds) * time.Second,
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			// Only evaluate after we have a meaningful sample size
+			if counts.Requests < uint32(cfg.CB.MinRequestsToTrip) {
+				return false
+			}
 			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
-			return counts.Requests >= 10 && failureRatio >= 0.5
+			return failureRatio >= cfg.CB.FailureRatioThreshold
 		},
 		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
 			observability.Log.Warn("circuit breaker state changed",

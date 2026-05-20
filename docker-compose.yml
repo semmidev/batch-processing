@@ -43,13 +43,22 @@ services:
       - DB_PASSWORD=YourStrong!Password
       - SYSTEM_C_BASE_URL=http://systemc:8081
       - SYSTEM_C_API_KEY=system-c-key
-      - SYSTEM_C_TIMEOUT_SECONDS=15
-      - SYSTEM_C_RATE_LIMIT_PER_SECOND=100
+      - SYSTEM_C_TIMEOUT_SECONDS=30
+      - SYSTEM_C_RATE_LIMIT_PER_SECOND=200
       - API_KEY_HEADER=Authorization
       - VALID_API_KEYS=key1,key2
       - WEBHOOK_MAX_RETRIES=5
       - WEBHOOK_SIGNING_ALGORITHM=sha256
       - LOG_LEVEL=info
+      # Worker tuning for massive batches
+      - WORKER_COUNT=20
+      - ITEMS_PER_POLL=100
+      - POLL_INTERVAL_SECONDS=1
+      # Circuit breaker — tolerant of ~10% deterministic failures
+      - CB_MAX_REQUESTS_HALF_OPEN=20
+      - CB_OPEN_TIMEOUT_SECONDS=15
+      - CB_MIN_REQUESTS_TO_TRIP=50
+      - CB_FAILURE_RATIO_THRESHOLD=0.6
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,7 +75,7 @@ services:
     environment:
       - SYSTEM_C_PORT=8081
       - SYSTEM_C_API_KEY=system-c-key
-      - SYSTEM_C_LATENCY_MS=100
+      - SYSTEM_C_LATENCY_MS=20
       - SYSTEM_C_FAILURE_RATE=0.0
       - SYSTEM_C_FAIL_ID_PATTERN=fail-item
     restart: always
